@@ -16,7 +16,7 @@ std::string TCPStream::get_client_addr() const {
 }
 
 int TCPStream::read(char *buffer, int size) {
-    int n = recv(socket_fd, buffer, BUFFER_SIZE, 0);
+    int n = recv(socket_fd, buffer, size, 0);
     if (n < 0) {
         throw std::runtime_error(
             fmt::format("Failed to read from socket: {} {}:{}", std::strerror(errno), ip, port));
@@ -104,84 +104,182 @@ TCPStreamIterator TCPListener::begin() { return ++TCPStreamIterator(this); }
 
 TCPStreamIterator TCPListener::end() { return TCPStreamIterator(this); }
 
-HTTPHandler::HTTPHandler() : stream() {}
-HTTPHandler::HTTPHandler(TCPStream *stream) : stream(stream) {}
-HTTPHandler::~HTTPHandler() {}
+Request::Request(const std::string &request_str) {
+    auto body_pos = request_str.find("\r\n\r\n");
 
-auto HTTPHandler::split(const std::string &s, const std::string &delimiter)
-    -> std::vector<std::string> {
+    auto request_header = request_str.substr(0, body_pos);
+    std::string request_body("");
+
+    if (body_pos != std::string::npos) {
+        request_body = request_str.substr(body_pos + 4);
+    }
+
+    auto lines = split(request_header, "\r\n");
+    auto request_line = split(lines[0], " ");
+    method = request_line[0];
+    path = request_line[1];
+    version = request_line[2];
+
+    for (int i = 1; i < lines.size(); i++) {
+        auto header = split(lines[i], ": ");
+        headers[header[0]] = header[1];
+    }
+
+    body = request_body;
+}
+
+Request::Request(const std::string &method, const std::string &path, const std::string &version,
+                 const Headers &headers, const std::string &body)
+    : method(method), path(path), version(version), body(body) {}
+
+Request::~Request() {}
+
+std::string Request::get_method() const { return method; }
+std::string Request::get_path() const { return path; }
+std::string Request::get_version() const { return version; }
+Request::Headers Request::get_headers() const { return headers; }
+std::string Request::get_body() const { return body; }
+
+std::string Request::to_string() const {
+    std::string request_str = fmt::format("{} {} {}\r\n", method, path, version);
+
+    for (auto &header : headers) {
+        request_str += fmt::format("{}: {}\r\n", header.first, header.second);
+    }
+
+    request_str += fmt::format("\r\n{}", body);
+
+    return request_str;
+}
+
+Response::Response() : version("HTTP/1.1"), status_code(200), status_message("OK") {}
+
+Response::Response(const std::string &response_str) {
+    auto body_pos = response_str.find("\r\n\r\n");
+
+    auto response_header = response_str.substr(0, body_pos);
+    std::string response_body("");
+
+    if (body_pos != std::string::npos) {
+        response_body = response_str.substr(body_pos + 4);
+    }
+
+    auto lines = split(response_header, "\r\n");
+    auto response_line = split(lines[0], " ");
+    version = response_line[0];
+    status_code = std::stoi(response_line[1]);
+    status_message = response_line[2];
+
+    for (int i = 1; i < lines.size(); i++) {
+        auto header = split(lines[i], ": ");
+        headers[header[0]] = header[1];
+    }
+
+    body = response_body;
+}
+
+Response::Response(const std::string &version, int status_code, const std::string &status_message,
+                   const Headers &headers, const std::string &body)
+    : version(version), status_code(status_code), status_message(status_message), body(body) {}
+
+Response::~Response() {}
+
+std::string Response::get_version() const { return version; }
+int Response::get_status_code() const { return status_code; }
+std::string Response::get_status_message() const { return status_message; }
+Response::Headers Response::get_headers() const { return headers; }
+std::string Response::get_body() const { return body; }
+
+void Response::set_version(const std::string &version) { this->version = version; }
+void Response::set_status_code(int status_code) { this->status_code = status_code; }
+void Response::set_status_message(const std::string &status_message) {
+    this->status_message = status_message;
+}
+void Response::set_headers(const Headers &headers) { this->headers = headers; }
+void Response::set_header(const std::string &key, const std::string &value) {
+    headers[key] = value;
+}
+void Response::set_body(const std::string &body) { this->body = body; }
+
+std::string Response::to_string() const {
+    std::string response_str = fmt::format("{} {} {}\r\n", version, status_code, status_message);
+
+    for (auto &header : headers) {
+        response_str += fmt::format("{}: {}\r\n", header.first, header.second);
+    }
+
+    response_str += fmt::format("\r\n{}", body);
+
+    return response_str;
+}
+
+HTTPHandler::HTTPHandler() : stream(nullptr) {}
+HTTPHandler::HTTPHandler(TCPStream *stream) : stream(stream) {}
+HTTPHandler::~HTTPHandler() {
+    if (stream != nullptr) {
+        delete stream;
+    }
+}
+HTTPHandler::HTTPHandler(HTTPHandler &&other) : stream(other.stream) { other.stream = nullptr; }
+
+HTTPHandler &HTTPHandler::operator=(HTTPHandler &&other) {
+    stream = other.stream;
+    other.stream = nullptr;
+    return *this;
+}
+
+auto split(const std::string &s, const std::string &delimiter) -> std::vector<std::string> {
     std::vector<std::string> tokens;
     std::string::size_type begin, end;
     begin = 0;
     end = s.find(delimiter);
     while (end != std::string::npos) {
-        tokens.push_back(s.substr(begin, end - begin));
+        if (end != begin) {
+            tokens.push_back(s.substr(begin, end - begin));
+        }
         begin = end + delimiter.size();
         end = s.find(delimiter, begin);
     }
-    tokens.push_back(s.substr(begin));
+    if (s.size() > begin) {
+        tokens.push_back(s.substr(begin));
+    }
     return tokens;
 }
 
-std::string HTTPHandler::trim(const std::string &s) {
+std::string trim(const std::string &s) {
     auto wsfront = std::find_if_not(s.begin(), s.end(), [](int c) { return isspace(c); });
     auto wsback = std::find_if_not(s.rbegin(), s.rend(), [](int c) { return isspace(c); }).base();
     return (wsback <= wsfront ? std::string() : std::string(wsfront, wsback));
 }
 
-std::string HTTPHandler::ltrim(const std::string &s) {
+std::string ltrim(const std::string &s) {
     auto wsfront = std::find_if_not(s.begin(), s.end(), [](int c) { return isspace(c); });
     return std::string(wsfront, s.end());
 }
 
-std::string HTTPHandler::rtrim(const std::string &s) {
+std::string rtrim(const std::string &s) {
     auto wsback = std::find_if_not(s.rbegin(), s.rend(), [](int c) { return isspace(c); }).base();
     return std::string(s.begin(), wsback);
 }
 
-auto HTTPHandler::parse_http_request(const std::string &request)
-    -> std::unordered_map<std::string, std::string> * {
-    /// parse a http request into key-value pair
-    /// return a pointer to the map
-    /// the caller is responsible for deleting the map
-
-    std::unordered_map<std::string, std::string> *map =
-        new std::unordered_map<std::string, std::string>();
-
-    auto lines = split(trim(request), "\r\n");
-    auto request_line = split(lines[0], " ");
-
-    map->insert({"method", request_line[0]});
-    map->insert({"path", request_line[1]});
-    map->insert({"version", request_line[2]});
-
-    for (int i = 1; i < lines.size(); i++) {
-        auto line = lines[i];
-        auto key_value = split(line, ":");
-        map->insert({key_value[0], ltrim(key_value[1])});
-    }
-    return map;
-}
-
 void HTTPHandler::operator()(Worker<HTTPHandler> *worker) {
-    fmt::print("Worker {} received a connection from {}\n", worker->get_id(),
-               stream->get_client_addr());
-
     char buffer[BUFFER_SIZE];
     int n = stream->read(buffer, BUFFER_SIZE);
 
-    std::string request(buffer, n);
-    auto map = parse_http_request(request);
+    std::string request_str(buffer, n);
+    Request request(request_str);
 
-    fmt::print("method: {}\n", map->at("method"));
-    fmt::print("path: {}\n", map->at("path"));
-    fmt::print("version: {}\n", map->at("version"));
+    fmt::print("Worker {} received request: \n{}\n", worker->get_id(), request.to_string());
 
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Type: "
-                           "text/html\r\n\r\n<html><body><h1>Hello World</h1></body></html>";
-    stream->write(response);
+    Response response;
 
-    delete map;
+    std::string response_body("<html><body><h1>Hello World</h1></body></html>");
+
+    response.set_header("Content-Type", "text/html");
+    response.set_header("Content-Length", std::to_string(response_body.size()));
+    response.set_body(response_body);
+
+    stream->write(response.to_string());
 }
 
 } // namespace mpmc

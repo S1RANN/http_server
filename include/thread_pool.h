@@ -37,8 +37,7 @@ template <typename T> class Sender {
     ~Sender();
 
     void close();
-    bool send(T data);
-    bool send(const T &&data);
+    bool send(T &&data);
 };
 
 template <typename T> class Receiver {
@@ -68,8 +67,7 @@ template <typename T> class Channel {
     ~Channel();
 
     void close();
-    bool push(T data);
-    bool push(const T &&data);
+    bool push(T &&data);
     bool pop(T &data);
     static void create(Sender<T> **, Receiver<T> **);
 };
@@ -130,7 +128,7 @@ template <typename T> Channel<T>::Channel(int capacity) : empty_count(capacity),
 
 template <typename T> Channel<T>::~Channel() {}
 
-template <typename T> bool Channel<T>::push(T data) {
+template <typename T> bool Channel<T>::push(T &&data) {
     std::unique_lock<std::mutex> lock(mutex);
     empty_cond.wait(lock, [this] { return empty_count > 0 || closed; });
     if (closed) {
@@ -139,22 +137,7 @@ template <typename T> bool Channel<T>::push(T data) {
         return false;
     }
     --empty_count;
-    channel.push(data);
-    ++full_count;
-    full_cond.notify_all();
-    return true;
-}
-
-template <typename T> bool Channel<T>::push(const T &&data) {
-    std::unique_lock<std::mutex> lock(mutex);
-    empty_cond.wait(lock, [this] { return empty_count > 0 || closed; });
-    if (closed) {
-        empty_cond.notify_all();
-        full_cond.notify_all();
-        return false;
-    }
-    --empty_count;
-    channel.push(data);
+    channel.push(std::move(data));
     ++full_count;
     full_cond.notify_all();
     return true;
@@ -169,7 +152,7 @@ template <typename T> bool Channel<T>::pop(T &data) {
         return false;
     }
     --full_count;
-    data = channel.front();
+    data = std::move(channel.front());
     channel.pop();
     ++empty_count;
     empty_cond.notify_all();
@@ -187,12 +170,8 @@ template <typename T> Sender<T>::Sender(std::shared_ptr<Channel<T>> channel) : c
 
 template <typename T> Sender<T>::~Sender() {}
 
-template <typename T> bool Sender<T>::send(T data) {
-    return channel != nullptr && channel->push(data);
-}
-
-template <typename T> bool Sender<T>::send(const T &&data) {
-    return channel != nullptr && channel->push(data);
+template <typename T> bool Sender<T>::send(T &&data) {
+    return channel != nullptr && channel->push(std::move(data));
 }
 
 template <typename T> void Sender<T>::close() {
@@ -220,7 +199,7 @@ template <typename Job> class Worker {
     Worker(int id, Receiver<Job> *receiver);
     ~Worker();
 
-    int get_id();
+    int get_id() const;
     void join();
 };
 
@@ -233,7 +212,7 @@ template <typename Job> class ThreadPool {
     ThreadPool(int num_workers);
     ~ThreadPool();
 
-    void submit(Job job);
+    void submit(Job &&job);
 };
 
 template <typename Job> ThreadPool<Job>::ThreadPool(int num_workers) {
@@ -256,7 +235,7 @@ template <typename Job> ThreadPool<Job>::~ThreadPool() {
     }
 }
 
-template <typename Job> void ThreadPool<Job>::submit(Job job) { sender->send(job); }
+template <typename Job> void ThreadPool<Job>::submit(Job &&job) { sender->send(std::move(job)); }
 
 template <typename Job>
 Worker<Job>::Worker(int id, Receiver<Job> *receiver) : id(id), receiver(receiver) {
@@ -269,7 +248,7 @@ Worker<Job>::Worker(int id, Receiver<Job> *receiver) : id(id), receiver(receiver
 }
 template <typename Job> Worker<Job>::~Worker() { delete receiver; }
 
-template <typename Job> int Worker<Job>::get_id() { return id; }
+template <typename Job> int Worker<Job>::get_id() const { return id; }
 template <typename Job> void Worker<Job>::join() { thread.join(); }
 
 } // namespace mpmc
