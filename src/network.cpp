@@ -38,25 +38,33 @@ TCPStream::TCPStream(int socket_fd, const char *ip, int port, const char *client
 
 TCPStream::~TCPStream() { close(socket_fd); }
 
-TCPStreamIterator::TCPStreamIterator(TCPListener *listener) : listener(listener), stream(nullptr) {}
+bool TCPStream::operator==(const TCPStream &other) const {
+    return socket_fd == other.socket_fd && ip == other.ip && port == other.port &&
+           client_ip == other.client_ip && client_port == other.client_port;
+}
+
+bool TCPStream::operator!=(const TCPStream &other) const { return !(*this == other); }
+
+TCPStreamIterator::TCPStreamIterator(TCPListener *listener) : listener(listener), stream() {}
 
 TCPStreamIterator &TCPStreamIterator::operator++() {
     try {
-        stream = listener->accept();
+        stream = new TCPStream(listener->accept());
     } catch (std::exception &e) {
         std::cerr << e.what() << "\n";
-        stream = nullptr;
     }
     return *this;
 }
 
 TCPStream &TCPStreamIterator::operator*() { return *stream; }
 
-bool TCPStreamIterator::operator==(const TCPStreamIterator &other) {
+bool TCPStreamIterator::operator==(const TCPStreamIterator &other) const {
     return stream == other.stream && listener == other.listener;
 }
 
-bool TCPStreamIterator::operator!=(const TCPStreamIterator &other) { return !(*this == other); }
+bool TCPStreamIterator::operator!=(const TCPStreamIterator &other) const {
+    return !(*this == other);
+}
 
 TCPListener::TCPListener(const char *_ip, int _port) : ip(_ip), port(_port) {
     socket_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -83,7 +91,7 @@ TCPListener::TCPListener(const char *_ip, int _port) : ip(_ip), port(_port) {
 
 TCPListener::~TCPListener() { close(socket_fd); }
 
-TCPStream *TCPListener::accept() {
+TCPStream TCPListener::accept() {
     sockaddr_in client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
     int client_socket_fd = ::accept(socket_fd, (sockaddr *)&client_addr, &client_addr_len);
@@ -97,7 +105,7 @@ TCPStream *TCPListener::accept() {
     inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
     int client_port = ntohs(client_addr.sin_port);
 
-    return new TCPStream(client_socket_fd, ip.c_str(), port, client_ip, client_port);
+    return TCPStream(client_socket_fd, ip.c_str(), port, client_ip, client_port);
 }
 
 TCPStreamIterator TCPListener::begin() { return ++TCPStreamIterator(this); }
@@ -223,6 +231,9 @@ HTTPHandler::~HTTPHandler() {
 HTTPHandler::HTTPHandler(HTTPHandler &&other) : stream(other.stream) { other.stream = nullptr; }
 
 HTTPHandler &HTTPHandler::operator=(HTTPHandler &&other) {
+    if(stream != nullptr) {
+        delete stream;
+    }
     stream = other.stream;
     other.stream = nullptr;
     return *this;

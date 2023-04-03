@@ -1,9 +1,6 @@
 #ifndef NETWORK_H_
 #define NETWORK_H_
 
-/// @file
-/// @brief Network communication
-
 #include "thread_pool.h"
 #include <netinet/in.h>
 #include <string>
@@ -24,6 +21,8 @@ class TCPStream {
   public:
     TCPStream(int socket_fd, const char *ip, int port, const char *client_ip, int client_port);
     ~TCPStream();
+    bool operator==(const TCPStream &other) const;
+    bool operator!=(const TCPStream &other) const;
 
     std::string get_addr() const;
     std::string get_client_addr() const;
@@ -42,8 +41,8 @@ class TCPStreamIterator {
     TCPStreamIterator(TCPListener *listener);
     TCPStreamIterator &operator++();
     TCPStream &operator*();
-    bool operator==(const TCPStreamIterator &other);
-    bool operator!=(const TCPStreamIterator &other);
+    bool operator==(const TCPStreamIterator &other) const;
+    bool operator!=(const TCPStreamIterator &other) const;
 };
 
 class TCPListener {
@@ -56,7 +55,7 @@ class TCPListener {
   public:
     TCPListener(const char *ip, int port);
     ~TCPListener();
-    TCPStream *accept();
+    TCPStream accept();
     TCPStreamIterator begin();
     TCPStreamIterator end();
 };
