@@ -4,7 +4,7 @@ project(mpmc CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 
 set(SOURCES src/network.cpp src/thread_pool.cpp src/event_loop.cpp)
 
@@ -16,4 +16,4 @@ include_directories(include)
 
 add_executable(main src/main.cpp)
 
-target_link_libraries(main fmt mylib)
+target_link_libraries(main fmt uring mylib)

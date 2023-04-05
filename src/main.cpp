@@ -17,7 +17,13 @@ void multithreaded_test() {
 
 void event_loop_test() {
     EventLoop loop;
-    loop.listen("0.0.0.0", 8080);
+    loop.listen("127.0.0.1", 8080);
+    loop.run();
+}
+
+void ring_event_loop_test(){
+    RingEventLoop loop;
+    loop.listen("127.0.0.1", 8080);
     loop.run();
 }
 
@@ -34,6 +40,8 @@ void timer_test(){
 
 int main() {
     // timer_test();
-    event_loop_test();
+    // event_loop_test();
+    // multithreaded_test();
+    ring_event_loop_test();
     return 0;
 }
