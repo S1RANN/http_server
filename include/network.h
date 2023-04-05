@@ -1,5 +1,4 @@
-#ifndef NETWORK_H_
-#define NETWORK_H_
+#pragma once
 
 #include "thread_pool.h"
 #include <netinet/in.h>
@@ -32,6 +31,16 @@ class TCPStream {
 
 class TCPListener;
 
+/**
+ * @brief Iterator for TCPListener
+ * 
+ * @note This iterator is not thread-safe. The dereferenced value should be destructed after use.
+ * 
+ * @example
+ * for (auto &stream : listener) {
+ *    // do something
+ * }
+ */
 class TCPStreamIterator {
   private:
     TCPListener *listener;
@@ -136,5 +145,3 @@ class HTTPHandler {
 };
 
 } // namespace mpmc
-
-#endif

@@ -1,5 +1,17 @@
 #!/bin/bash
 
-time for i in {1..100000}; do
-  curl http://127.0.0.1:8080 -H 'Content-Type: application/json' -d '{"name": "John", "age": 30}'
+start=`date +%s.%N`
+
+for i in {1..12};do
+(
+  for j in {1..5000};do
+    curl -s -o /dev/null http://localhost:8080/
+  done
+) &
 done
+
+wait
+
+end=`date +%s.%N`
+
+echo "Time taken: $(echo "$end - $start" | bc) s"

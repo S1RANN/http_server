@@ -1,5 +1,4 @@
-#ifndef THREAD_POOL_H_
-#define THREAD_POOL_H_
+#pragma once
 
 #include <condition_variable>
 #include <fmt/format.h>
@@ -233,6 +232,7 @@ template <typename Job> ThreadPool<Job>::~ThreadPool() {
         fmt::print("Worker {} joined", worker->get_id());
         delete worker;
     }
+    delete sender;
 }
 
 template <typename Job> void ThreadPool<Job>::submit(Job &&job) { sender->send(std::move(job)); }
@@ -252,5 +252,3 @@ template <typename Job> int Worker<Job>::get_id() const { return id; }
 template <typename Job> void Worker<Job>::join() { thread.join(); }
 
 } // namespace mpmc
-
-#endif

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 
-set(SOURCES src/network.cpp src/thread_pool.cpp)
+set(SOURCES src/network.cpp src/thread_pool.cpp src/event_loop.cpp)
 
 add_library(mylib SHARED ${SOURCES})
 
